@@ -1,0 +1,1 @@
+declare module 'preact-chartjs-2';

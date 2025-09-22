@@ -26,14 +26,9 @@
   },
   "dependencies": {
     "@preact/preset-vite": "^2.10.2",
-    "@wxt-dev/module-react": "^1.1.5",
     "dexie": "^4.2.0",
-    "lucide-preact": "^0.544.0",
-    "lucide-react": "^0.544.0",
     "preact": "^10.26.9",
-    "preact-chartjs-2": "^1.0.3",
     "preact-iso": "^2.10.0",
-    "react-minimal-pie-chart": "^7.3.0",
     "uuid": "^13.0.0"
   }
 }

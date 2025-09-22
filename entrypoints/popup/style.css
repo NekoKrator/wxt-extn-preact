@@ -50,7 +50,7 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 500;
   padding: 4px 8px;
   border-radius: 12px;
@@ -114,6 +114,7 @@ body {
 }
 
 .chart-container {
+  /* height: 100px; */
   display: flex;
   align-items: flex-start;
   gap: 16px;
