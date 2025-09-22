@@ -1,0 +1,42 @@
+import { saveEvent } from '../lib/storage'
+
+export default async function handleRuntimeMessage(event, sender) {
+  const tabId = sender.tab?.id;
+  if (tabId === undefined) return;
+
+  switch (event.type) {
+    case 'page_view':
+      saveEvent(tabId, 'page_view', {
+        url: event.url,
+        title: event.title,
+        referrer: event.referrer,
+      });
+      break;
+
+    case 'visibility_change':
+      saveEvent(tabId, 'visibility_change', { state: event.state });
+      if (event.state === 'visible') startActive(tabId);
+      if (event.state === 'hidden') stopActive(tabId);
+      break;
+
+    case 'focus_gain':
+      saveEvent(tabId, 'focus_gain');
+      startActive(tabId);
+      break;
+
+    case 'focus_lost':
+      saveEvent(tabId, 'focus_lost');
+      stopActive(tabId);
+      break;
+
+    case 'tab_unload':
+      saveEvent(tabId, 'tab_unload');
+      stopActive(tabId);
+      break;
+
+    default:
+      const { type, ...rest } = event;
+      saveEvent(tabId, type, rest);
+      break;
+  }
+}

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Activity Analytics - Settings</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+          sans-serif;
+        max-width: 600px;
+        margin: 40px auto;
+        padding: 20px;
+        line-height: 1.6;
+      }
+
+      h1 {
+        color: #4f46e5;
+        text-align: center;
+        margin-bottom: 30px;
+      }
+
+      .section {
+        background: #f9fafb;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        border: 1px solid #e5e7eb;
+      }
+
+      .section h2 {
+        margin-top: 0;
+        color: #111827;
+      }
+
+      .form-group {
+        margin-bottom: 15px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+      }
+
+      input[type='checkbox'] {
+        margin-right: 8px;
+      }
+
+      button {
+        background: #4f46e5;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+        margin-right: 10px;
+      }
+
+      button:hover {
+        background: #3730a3;
+      }
+
+      .btn-danger {
+        background: #ef4444;
+      }
+
+      .btn-danger:hover {
+        background: #dc2626;
+      }
+
+      #status {
+        margin-top: 10px;
+        padding: 10px;
+        border-radius: 4px;
+        display: none;
+      }
+
+      #status.success {
+        background: #dcfce7;
+        color: #166534;
+        display: block;
+      }
+
+      #status.error {
+        background: #fef2f2;
+        color: #991b1b;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Activity Analytics Settings</h1>
+
+    <div class="section">
+      <h2>General Settings</h2>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="tracking-enabled" checked />
+          Enable activity tracking
+        </label>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Data Management</h2>
+      <button id="export-btn">Export Data</button>
+      <button id="clear-btn" class="btn-danger">Clear All Data</button>
+      <div id="status"></div>
+    </div>
+
+    <script>
+      // Simple options page functionality
+      let isTrackingEnabled = true;
+
+      // Load current settings
+      chrome.runtime.sendMessage(
+        { type: 'IS_TRACKING_ENABLED' },
+        (response) => {
+          if (response?.success) {
+            isTrackingEnabled = response.data?.enabled || false;
+            document.getElementById('tracking-enabled').checked =
+              isTrackingEnabled;
+          }
+        }
+      );
+
+      // Handle tracking toggle
+      document
+        .getElementById('tracking-enabled')
+        .addEventListener('change', (e) => {
+          const enabled = e.target.checked;
+          const messageType = enabled ? 'RESUME_TRACKING' : 'PAUSE_TRACKING';
+
+          chrome.runtime.sendMessage({ type: messageType }, (response) => {
+            if (response?.success) {
+              showStatus('Settings saved!', 'success');
+            } else {
+              showStatus('Failed to save settings', 'error');
+              e.target.checked = !enabled; // Revert checkbox
+            }
+          });
+        });
+
+      // Handle export
+      document.getElementById('export-btn').addEventListener('click', () => {
+        chrome.runtime.sendMessage({ type: 'EXPORT_DATA' }, (response) => {
+          if (response?.success) {
+            const data = JSON.stringify(response.data, null, 2);
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `activity-analytics-${
+              new Date().toISOString().split('T')[0]
+            }.json`;
+            a.click();
+
+            URL.revokeObjectURL(url);
+            showStatus('Data exported successfully!', 'success');
+          } else {
+            showStatus('Failed to export data', 'error');
+          }
+        });
+      });
+
+      // Handle clear data
+      document.getElementById('clear-btn').addEventListener('click', () => {
+        if (
+          confirm(
+            'Are you sure you want to clear all data? This cannot be undone.'
+          )
+        ) {
+          chrome.runtime.sendMessage({ type: 'CLEAR_DATA' }, (response) => {
+            if (response?.success) {
+              showStatus('All data cleared!', 'success');
+            } else {
+              showStatus('Failed to clear data', 'error');
+            }
+          });
+        }
+      });
+
+      function showStatus(message, type) {
+        const status = document.getElementById('status');
+        status.textContent = message;
+        status.className = type;
+
+        setTimeout(() => {
+          status.style.display = 'none';
+        }, 3000);
+      }
+    </script>
+  </body>
+</html>

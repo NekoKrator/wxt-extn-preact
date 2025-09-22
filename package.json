@@ -1,0 +1,36 @@
+{
+  "name": "activity-analytics-extension",
+  "description": "Privacy-focused web activity analytics extension",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
+    "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox",
+    "compile": "tsc --noEmit",
+    "postinstall": "wxt prepare"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.2",
+    "@types/node": "^24.5.2",
+    "@types/uuid": "^10.0.0",
+    "eslint": "^9.36.0",
+    "eslint-config-preact": "^2.0.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7",
+    "wxt": "^0.20.6"
+  },
+  "dependencies": {
+    "@preact/preset-vite": "^2.10.2",
+    "@wxt-dev/module-react": "^1.1.5",
+    "dexie": "^4.2.0",
+    "lucide-react": "^0.544.0",
+    "preact": "^10.26.9",
+    "preact-iso": "^2.10.0",
+    "uuid": "^13.0.0"
+  }
+}
