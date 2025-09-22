@@ -3,10 +3,6 @@ import { Dexie } from 'dexie';
 export default defineBackground(() => {
   console.log('Background script starting...');
 
-  // Импортируем и инициализируем весь код background service
-  // Поскольку WXT требует все в одном файле, встраиваем основную логику
-
-  // Типы (встроенные)
   interface ActiveTab {
     tabId: number
     pageId: number
@@ -23,7 +19,6 @@ export default defineBackground(() => {
     timestamp?: number
   }
 
-  // Утилиты для работы с URL
   function cleanUrl(url: string): string {
     try {
       const urlObj = new URL(url)
@@ -42,7 +37,6 @@ export default defineBackground(() => {
     }
   }
 
-  // Database setup с Dexie
   import('dexie').then(({ default: Dexie }) => {
     class AnalyticsDB extends Dexie {
       pages!: Dexie.Table<any, number>
@@ -63,7 +57,6 @@ export default defineBackground(() => {
 
     const db = new AnalyticsDB()
 
-    // Session Manager
     class SessionManager {
       private static instance: SessionManager
       private currentSessionId: string | null = null
@@ -88,7 +81,6 @@ export default defineBackground(() => {
           await this.endSession()
         }
 
-        // Простой UUID генератор
         this.currentSessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9)
         this.sessionStartTime = Date.now()
 
@@ -134,7 +126,6 @@ export default defineBackground(() => {
       }
     }
 
-    // Database Service
     class DatabaseService {
       static async upsertPage(url: string, title: string) {
         const cleanedUrl = cleanUrl(url);
@@ -264,7 +255,6 @@ export default defineBackground(() => {
       }
     }
 
-    // Tab Manager
     class TabManager {
       private activeTabs = new Map<number, ActiveTab>()
       private currentFocusedTab?: number
@@ -597,7 +587,7 @@ export default defineBackground(() => {
             return null;
 
           default:
-            console.warn(`Unknown message type: ${message.type}`);
+            console.error(`Unknown message type: ${message.type}`);
             return null;
         }
       }
@@ -629,7 +619,6 @@ export default defineBackground(() => {
       }
     }
 
-    // Initialize background service
     new BackgroundService();
   });
 });

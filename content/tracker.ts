@@ -15,7 +15,6 @@ export class ContentTracker {
       return
     }
 
-    // Проверяем, что мы не на системных страницах
     if (this.shouldSkipTracking()) {
       return
     }
@@ -23,7 +22,6 @@ export class ContentTracker {
     this.isInitialized = true;
     console.log(`Content Script started for: ${window.location.href}`);
 
-    // Небольшая задержка для загрузки DOM
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => {
         this.setupTracking()
@@ -37,7 +35,6 @@ export class ContentTracker {
     const url = window.location.href
     const protocol = window.location.protocol
 
-    // Пропускаем системные страницы
     if (protocol === 'chrome:' ||
       protocol === 'chrome-extension:' ||
       protocol === 'moz-extension:' ||
@@ -67,7 +64,6 @@ export class ContentTracker {
   }
 
   private setupEventListeners() {
-    // Visibility change
     document.addEventListener('visibilitychange', () => {
       const visible = document.visibilityState === 'visible';
       if (visible !== this.isVisible) {
@@ -76,12 +72,10 @@ export class ContentTracker {
       }
     }, { passive: true })
 
-    // Before unload
     window.addEventListener('beforeunload', () => {
       this.sendVisibilityChange(false, 'before_unload')
     })
 
-    // Window focus/blur
     window.addEventListener('focus', () => {
       if (!this.isVisible) {
         this.isVisible = true
@@ -96,13 +90,11 @@ export class ContentTracker {
       }
     }, { passive: true })
 
-    // Page hide/show (для back/forward кеша)
     window.addEventListener('pagehide', () => {
       this.sendVisibilityChange(false, 'page_hide')
     })
 
     window.addEventListener('pageshow', (event) => {
-      // event.persisted указывает на восстановление из кеша
       this.sendVisibilityChange(true, event.persisted ? 'page_show_cached' : 'page_show')
     })
   }
@@ -124,10 +116,8 @@ export class ContentTracker {
 
     try {
       this.visibilityObserver = new IntersectionObserver((entries) => {
-        // Проверяем видимость основного контента страницы
         const maxVisibility = Math.max(...entries.map(e => e.intersectionRatio))
 
-        // Отправляем только значительные изменения видимости
         if (maxVisibility === 0 && this.isVisible) {
           this.isVisible = false
           this.sendVisibilityChange(false, 'intersection_hidden')
@@ -140,7 +130,6 @@ export class ContentTracker {
         rootMargin: '0px'
       })
 
-      // Наблюдаем за body или main контентом
       const target = document.body || document.documentElement
       if (target) {
         this.visibilityObserver.observe(target)
@@ -162,7 +151,6 @@ export class ContentTracker {
 
         console.log(`SPA navigation detected: ${from} -> ${newUrl}`)
 
-        // Отправляем событие навигации
         sendMessage('INTERACTION', {
           interactionType: 'spa_navigation',
           url: currentUrl,
@@ -174,18 +162,15 @@ export class ContentTracker {
           }
         }).catch(console.warn);
 
-        // Отправляем новый page view с небольшой задержкой
         setTimeout(() => {
           this.sendPageView()
         }, 100);
       }
     }
 
-    // Слушатели для SPA навигации
     window.addEventListener('popstate', checkUrlChange);
     window.addEventListener('hashchange', checkUrlChange);
 
-    // Перехватываем History API
     const originalPushState = history.pushState;
     const originalReplaceState = history.replaceState;
 

@@ -1,7 +1,7 @@
+// wxt.config.ts
 import { defineConfig } from 'wxt';
 
 export default defineConfig({
-  modules: ['@wxt-dev/module-react'],
   manifest: {
     name: 'Activity Analytics',
     version: '1.0.0',
@@ -26,6 +26,24 @@ export default defineConfig({
     },
     options_page: 'options/index.html'
   },
+  vite: () => ({
+    resolve: {
+      alias: {
+        react: 'preact/compat',
+        'react-dom': 'preact/compat',
+      },
+    },
+    define: {
+      global: 'globalThis',
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: undefined,
+        },
+      },
+    },
+  }),
   webExt: {
     chromiumArgs: ['--disable-extensions-except=dist', '--load-extension=dist']
   },

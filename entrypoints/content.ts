@@ -3,7 +3,6 @@ export default defineContentScript({
   runAt: 'document_start',
   allFrames: false,
   main() {
-    // Проверяем, что мы не на системных страницах
     if (location.protocol.startsWith('chrome') ||
       location.protocol.startsWith('moz-extension') ||
       location.href.includes('chrome://') ||
@@ -12,8 +11,6 @@ export default defineContentScript({
     }
 
     console.log('Content script initializing for:', location.href)
-
-    // Класс ContentTracker встроенный в этот файл
     class ContentTracker {
       private isVisible = !document.hidden;
       private lastUrl = window.location.href;
@@ -32,7 +29,6 @@ export default defineContentScript({
         this.isInitialized = true;
         console.log(`Content Script started for: ${window.location.href}`);
 
-        // Небольшая задержка для загрузки DOM
         if (document.readyState === 'loading') {
           document.addEventListener('DOMContentLoaded', () => {
             this.setupTracking()
@@ -78,7 +74,6 @@ export default defineContentScript({
       }
 
       private setupEventListeners() {
-        // Visibility change
         document.addEventListener('visibilitychange', () => {
           const visible = document.visibilityState === 'visible';
           if (visible !== this.isVisible) {
@@ -87,12 +82,10 @@ export default defineContentScript({
           }
         }, { passive: true })
 
-        // Before unload
         window.addEventListener('beforeunload', () => {
           this.sendVisibilityChange(false, 'before_unload')
         })
 
-        // Window focus/blur
         window.addEventListener('focus', () => {
           if (!this.isVisible) {
             this.isVisible = true
@@ -107,7 +100,6 @@ export default defineContentScript({
           }
         }, { passive: true })
 
-        // Page hide/show (для back/forward кеша)
         window.addEventListener('pagehide', () => {
           this.sendVisibilityChange(false, 'page_hide')
         })
@@ -217,7 +209,6 @@ export default defineContentScript({
       }
     }
 
-    // Создаем и инициализируем трекер
     const tracker = new ContentTracker();
     (window as any).__activityTracker = tracker;
   },
