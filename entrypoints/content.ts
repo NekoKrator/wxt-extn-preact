@@ -1,3 +1,5 @@
+import { CONST_EVENTS } from "../lib/constants";
+
 export default defineContentScript({
   matches: ['https://*/*', 'http://*/*'],
   runAt: 'document_start',
@@ -7,10 +9,11 @@ export default defineContentScript({
       location.protocol.startsWith('moz-extension') ||
       location.href.includes('chrome://') ||
       location.href.includes('about:')) {
-      return
+      return;
     }
 
     console.log('Content script initializing for:', location.href)
+
     class ContentTracker {
       private isVisible = !document.hidden;
       private lastUrl = window.location.href;
@@ -46,7 +49,7 @@ export default defineContentScript({
       }
 
       private sendPageView() {
-        this.sendMessage('PAGE_VIEW', {
+        this.sendMessage(CONST_EVENTS.PAGE_VIEW, {
           url: window.location.href,
           title: document.title,
           referrer: document.referrer || undefined
@@ -55,22 +58,20 @@ export default defineContentScript({
         })
       }
 
-      private sendMessage<T = any>(type: string, data?: any): Promise<T> {
-        return new Promise((resolve, reject) => {
+      private async sendMessage<T = any>(type: string, data?: any): Promise<T> {
+        try {
           const message = {
             type,
             data,
             timestamp: Date.now()
           };
 
-          browser.runtime.sendMessage(message, (response) => {
-            if (browser.runtime.lastError) {
-              reject(new Error(browser.runtime.lastError.message));
-            } else {
-              resolve(response);
-            }
-          });
-        });
+          // В WXT 0.20+ используем browser.runtime вместо chrome.runtime
+          const response = await browser.runtime.sendMessage(message);
+          return response;
+        } catch (error) {
+          throw new Error(`Failed to send message: ${error}`);
+        }
       }
 
       private setupEventListeners() {
@@ -110,7 +111,7 @@ export default defineContentScript({
       }
 
       private sendVisibilityChange(visible: boolean, reason: string) {
-        this.sendMessage('VISIBILITY_CHANGE', {
+        this.sendMessage(CONST_EVENTS.VISIBILITY_CHANGE, {
           visible,
           url: window.location.href,
           reason
@@ -178,23 +179,27 @@ export default defineContentScript({
           }
         }
 
+        // Отслеживание навигации
         window.addEventListener('popstate', checkUrlChange);
         window.addEventListener('hashchange', checkUrlChange);
 
+        // Перехват History API с правильными типами
         const originalPushState = history.pushState;
         const originalReplaceState = history.replaceState;
 
-        history.pushState = function (...args) {
-          originalPushState.apply(this, args);
+        history.pushState = function (data: any, unused: string, url?: string | URL | null) {
+          originalPushState.call(this, data, unused, url);
           setTimeout(checkUrlChange, 0);
         }
 
-        history.replaceState = function (...args) {
-          originalReplaceState.apply(this, args);
+        history.replaceState = function (data: any, unused: string, url?: string | URL | null) {
+          originalReplaceState.call(this, data, unused, url);
           setTimeout(checkUrlChange, 0);
         }
 
-        ['routechange', 'navigationend', 'urlchange'].forEach(eventName => {
+        // Дополнительные события для SPA фреймворков
+        const spaEvents = ['routechange', 'navigationend', 'urlchange'] as const;
+        spaEvents.forEach((eventName: string) => {
           window.addEventListener(eventName, checkUrlChange, { passive: true })
         })
       }
@@ -208,6 +213,14 @@ export default defineContentScript({
         console.log('Content tracker cleaned up')
       }
     }
+
+    // const tracker = new ContentTracker();
+
+    // (globalThis as any).__activityTracker = tracker;
+
+    // window.addEventListener('beforeunload', () => {
+    //   tracker.cleanup();
+    // });
 
     const tracker = new ContentTracker();
     (window as any).__activityTracker = tracker;

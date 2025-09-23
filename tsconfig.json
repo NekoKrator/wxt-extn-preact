@@ -6,15 +6,15 @@
     "noEmit": true,
     "allowJs": true,
     "checkJs": true,
-    "types": ["wxt"],
+    "types": ["wxt", "chrome"],
 
-    /* Preact Config */
     "jsx": "react-jsx",
     "jsxImportSource": "preact",
     "skipLibCheck": true,
     "paths": {
       "react": ["./node_modules/preact/compat/"],
-      "react-dom": ["./node_modules/preact/compat/"]
+      "react-dom": ["./node_modules/preact/compat/"],
+      "chrome": ["./node_modules/@types/chrome"]
     }
   },
   "extends": "./.wxt/tsconfig.json",

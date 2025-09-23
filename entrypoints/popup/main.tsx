@@ -1,18 +1,28 @@
 import { render } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { sendMessage } from '../../shared/utils/messaging';
-import { Pause, Play } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Settings,
+  BarChart3,
+  Home,
+} from 'lucide-react';
 import { formatTime } from './utils/time';
 import './style.css';
-import { browser } from 'wxt/browser';
-import PopupFooter from './components/PopupFooter';
 import ActivityChart from './components/ActivityChart';
+import StatsTab from './components/StatsTab';
+import SettingsTab from './components/SettingsTab';
 import type { Stats } from './utils/types';
+
+type TabType = 'home' | 'stats' | 'settings';
 
 const PopupApp = () => {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>('home');
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   const loadStats = useCallback(async () => {
     try {
@@ -34,7 +44,6 @@ const PopupApp = () => {
       });
     } catch (error) {
       console.error('Failed to load stats:', error);
-
       setError('Failed to load data');
       setStats({
         todayTime: 0,
@@ -48,12 +57,12 @@ const PopupApp = () => {
 
   useEffect(() => {
     loadStats();
+    const interval = setInterval(loadStats, 30000);
+    return () => clearInterval(interval);
   }, [loadStats]);
 
   const handleToggleTracking = useCallback(async () => {
-    if (!stats) {
-      return;
-    }
+    if (!stats) return;
 
     try {
       await sendMessage(
@@ -85,9 +94,7 @@ const PopupApp = () => {
   }, []);
 
   const handleClearData = useCallback(async () => {
-    if (!confirm('Clear all data? This cannot be undone.')) {
-      return;
-    }
+    if (!confirm('Clear all data? This cannot be undone.')) return;
 
     try {
       await sendMessage('CLEAR_DATA');
@@ -99,81 +106,184 @@ const PopupApp = () => {
     }
   }, [loadStats]);
 
-  const handleOpenOptions = useCallback(() => {
-    try {
-      if (typeof browser !== 'undefined') {
-        browser.runtime.openOptionsPage();
-      }
-    } catch (error) {
-      console.error(error);
+  const formatDate = (date: Date) => {
+    return date.toISOString().split('T')[0];
+  };
+
+  const changeDate = (direction: 'prev' | 'next') => {
+    const newDate = new Date(selectedDate);
+    if (direction === 'prev') {
+      newDate.setDate(newDate.getDate() - 1);
+    } else {
+      newDate.setDate(newDate.getDate() + 1);
     }
-  }, []);
+    setSelectedDate(newDate);
+  };
+
+  const isToday = (date: Date) => {
+    const today = new Date();
+    return formatDate(date) === formatDate(today);
+  };
 
   if (loading) {
-    return <div class='loading'>Loading...</div>;
+    return (
+      <div class='popup-container'>
+        <div class='loading'>Loading...</div>
+      </div>
+    );
   }
 
   if (error) {
-    return <div class='error'>{error}</div>;
+    return (
+      <div class='popup-container'>
+        <div class='error'>{error}</div>
+      </div>
+    );
   }
 
   if (!stats) {
-    return <div class='error'>No data available</div>;
+    return (
+      <div class='popup-container'>
+        <div class='error'>No data available</div>
+      </div>
+    );
   }
+
+  const totalTime = stats.topDomains.reduce((sum, d) => sum + d.totalTime, 0);
 
   return (
     <div class='popup-container'>
       <header class='popup-header'>
-        <h1>Activity Analytics</h1>
-        <div class={`status ${stats.isTrackingEnabled ? 'active' : 'paused'}`}>
-          {stats.isTrackingEnabled ? <Play size={15} /> : <Pause size={15} />}
-          {stats.isTrackingEnabled ? 'Active' : 'Paused'}
+        <div class='header-title'>
+          <span class='logo'>⏱️</span>
+          <h1>Webtime Tracker</h1>
+          <p class='subtitle'>Discover your browsing habits!</p>
         </div>
+
+        <nav class='tab-nav'>
+          <button
+            class={`tab-btn ${activeTab === 'home' ? 'active' : ''}`}
+            onClick={() => setActiveTab('home')}
+          >
+            <Home size={16} />
+            <span>Home</span>
+          </button>
+          <button
+            class={`tab-btn ${activeTab === 'stats' ? 'active' : ''}`}
+            onClick={() => setActiveTab('stats')}
+          >
+            <BarChart3 size={16} />
+            <span>Stats</span>
+          </button>
+          <button
+            class={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            <Settings size={16} />
+            <span>Settings</span>
+          </button>
+        </nav>
       </header>
 
+      {/* Main content */}
       <main class='popup-main'>
-        <section class='today-stats'>
-          <h2>Today's Activity</h2>
-          <div class='stat-card'>
-            <div class='stat-value'>{formatTime(stats.todayTime)}</div>
-            <div class='stat-label'>Active Time</div>
-          </div>
-        </section>
+        {activeTab === 'home' && (
+          <>
+            {/* Date navigation */}
+            <div class='date-navigation'>
+              <button class='date-nav-btn' onClick={() => changeDate('prev')}>
+                <ChevronLeft size={16} />
+              </button>
 
-        <ActivityChart domains={stats.topDomains} />
-
-        {stats.currentTab ? (
-          <section class='current-tab'>
-            <h3>Current Tab</h3>
-            <div class='tab-info'>
-              <div class='domain'>{stats.currentTab.domain}</div>
-              <div class='time'>{formatTime(stats.currentTab.activeTime)}</div>
-            </div>
-          </section>
-        ) : null}
-
-        {!stats.topDomains || stats.topDomains.length === 0 ? null : (
-          <section class='top-domains'>
-            <h3>Top Sites</h3>
-            <div class='domain-list'>
-              {stats.topDomains.slice(0, 5).map((d, i) => (
-                <div key={`${d.domain}-${i}`} class='domain-item'>
-                  <div class='domain-name'>{d.domain}</div>
-                  <div class='domain-time'>{formatTime(d.totalTime)}</div>
+              <div class='date-info'>
+                <span class='date-value'>{formatDate(selectedDate)}</span>
+                <div class='date-labels'>
+                  <span class='daily-average'>Daily average</span>
+                  <span class='all-time'>All-time</span>
                 </div>
-              ))}
+              </div>
+
+              <button
+                class='date-nav-btn'
+                onClick={() => changeDate('next')}
+                disabled={isToday(selectedDate)}
+              >
+                <ChevronRight size={16} />
+              </button>
             </div>
-          </section>
+
+            {/* Chart section */}
+            <div class='chart-section'>
+              <ActivityChart domains={stats.topDomains} totalTime={totalTime} />
+            </div>
+
+            {/* Website list */}
+            <div class='website-list'>
+              <h3>Today data</h3>
+
+              {stats.topDomains.length === 0 ? (
+                <div class='empty-state'>
+                  <p>No browsing data for today</p>
+                  <small>Start browsing to see your activity</small>
+                </div>
+              ) : (
+                <div class='domain-items'>
+                  {stats.topDomains.slice(0, 8).map((domain, index) => {
+                    const percentage =
+                      totalTime > 0
+                        ? ((domain.totalTime / totalTime) * 100).toFixed(1)
+                        : '0.0';
+
+                    return (
+                      <div key={`${domain.domain}-${index}`} class='domain-row'>
+                        <div class='domain-info'>
+                          <div class='domain-indicator'></div>
+                          <span class='domain-name'>{domain.domain}</span>
+                        </div>
+                        <div class='domain-stats'>
+                          <span class='domain-percentage'>{percentage} %</span>
+                          <span class='domain-time'>
+                            {formatTime(domain.totalTime)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Footer actions */}
+            <div class='footer-actions'>
+              <button
+                onClick={handleToggleTracking}
+                class={`action-btn ${
+                  stats.isTrackingEnabled ? 'pause' : 'play'
+                }`}
+              >
+                {stats.isTrackingEnabled ? 'Pause Tracking' : 'Resume Tracking'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'stats' && (
+          <StatsTab
+            stats={stats}
+            onExport={handleExportData}
+            onClear={handleClearData}
+          />
+        )}
+
+        {activeTab === 'settings' && (
+          <SettingsTab
+            isTrackingEnabled={stats.isTrackingEnabled}
+            onToggleTracking={handleToggleTracking}
+            onExport={handleExportData}
+            onClear={handleClearData}
+          />
         )}
       </main>
-
-      <PopupFooter
-        isTrackingEnabled={stats.isTrackingEnabled}
-        onToggleTracking={handleToggleTracking}
-        onExport={handleExportData}
-        onClear={handleClearData}
-        onOpenOptions={handleOpenOptions}
-      />
     </div>
   );
 };

@@ -1,4 +1,7 @@
 import { Dexie } from 'dexie';
+import { BadgeManager } from '../lib/badge-manager';
+import { IdleTracker } from '../lib/idle-tracker'
+import { CONST_EVENTS } from '../lib/constants';
 
 export default defineBackground(() => {
   console.log('Background script starting...');
@@ -222,10 +225,7 @@ export default defineBackground(() => {
         const domainMap = new Map();
 
         pages.forEach(page => {
-          const currentSession = page.currentSessionStart
-            ? Date.now() - page.currentSessionStart
-            : 0;
-          const totalTime = page.totalActiveTime + currentSession;
+          const totalTime = page.totalActiveTime;
 
           const existing = domainMap.get(page.domain) || {
             totalTime: 0,
@@ -259,10 +259,34 @@ export default defineBackground(() => {
       private activeTabs = new Map<number, ActiveTab>()
       private currentFocusedTab?: number
       private sessionManager: SessionManager
-      private isIdle = false
+      private badgeManager: BadgeManager
+      private idleTracker: IdleTracker
 
       constructor() {
         this.sessionManager = SessionManager.getInstance()
+        this.badgeManager = BadgeManager.getInstance()
+        this.idleTracker = new IdleTracker(15)
+
+        this.idleTracker.onIdleChange(this.handleIdleChange.bind(this))
+      }
+
+      private handleIdleChange(isIdle: boolean) {
+        console.log(`Tab Manager: Idle state changed to ${isIdle ? 'idle' : 'active'}`)
+
+        if (isIdle) {
+          if (this.currentFocusedTab) {
+            this.endTabActivity(this.currentFocusedTab)
+          }
+        } else {
+          if (this.currentFocusedTab) {
+            this.startTabActivity(this.currentFocusedTab)
+            this.badgeManager.resetTabTime(this.currentFocusedTab)
+          }
+        }
+
+        this.activeTabs.forEach(tab => {
+          tab.isIdle = isIdle
+        })
       }
 
       async handlePageView(tabId: number, url: string, title: string) {
@@ -273,7 +297,7 @@ export default defineBackground(() => {
         await DatabaseService.addEvent(
           page.id!,
           this.sessionManager.getCurrentSessionId(),
-          'page_view',
+          CONST_EVENTS.PAGE_VIEW,
           { referrer: await this.getTabReferrer(tabId) }
         )
 
@@ -283,13 +307,15 @@ export default defineBackground(() => {
           url: page.url,
           domain: page.domain,
           isVisible: this.currentFocusedTab === tabId,
-          isIdle: this.isIdle,
+          isIdle: this.idleTracker.getIdleState(),
           lastActivityTime: Date.now()
         })
 
         console.log(`Page view: ${page.url} (tab ${tabId})`)
 
-        if (this.currentFocusedTab === tabId && !this.isIdle) {
+        this.badgeManager.resetTabTime(tabId)
+
+        if (this.currentFocusedTab === tabId && !this.idleTracker.getIdleState()) {
           await this.startTabActivity(tabId)
         }
       }
@@ -309,10 +335,12 @@ export default defineBackground(() => {
           await DatabaseService.addEvent(
             tab.pageId,
             this.sessionManager.getCurrentSessionId(),
-            'focus_gain'
+            CONST_EVENTS.FOCUS_GAIN
           )
 
-          if (!this.isIdle) {
+          this.badgeManager.resetTabTime(tabId)
+
+          if (!this.idleTracker.getIdleState()) {
             await this.startTabActivity(tabId)
           }
         }
@@ -325,7 +353,7 @@ export default defineBackground(() => {
           await DatabaseService.addEvent(
             tab.pageId,
             this.sessionManager.getCurrentSessionId(),
-            'tab_close'
+            CONST_EVENTS.TAB_CLOSE
           )
         }
 
@@ -336,14 +364,14 @@ export default defineBackground(() => {
       }
 
       async handleWindowFocusChanged(windowId: number) {
-        if (windowId === browser.windows.WINDOW_ID_NONE) {
+        if (windowId === chrome.windows.WINDOW_ID_NONE) {
           if (this.currentFocusedTab) {
             await this.endTabActivity(this.currentFocusedTab)
             this.currentFocusedTab = undefined
           }
         } else {
           try {
-            const tabs = await browser.tabs.query({ active: true, windowId })
+            const tabs = await chrome.tabs.query({ active: true, windowId })
             if (tabs[0]?.id) {
               await this.handleTabFocusGain(tabs[0].id)
             }
@@ -351,25 +379,6 @@ export default defineBackground(() => {
             console.error(`Error handling window focus: ${error}`)
           }
         }
-      }
-
-      handleIdleStateChange(newState: Browser.idle.IdleState) {
-        const wasIdle = this.isIdle
-        this.isIdle = newState !== 'active'
-
-        if (!wasIdle && this.isIdle) {
-          if (this.currentFocusedTab) {
-            this.endTabActivity(this.currentFocusedTab)
-          }
-        } else if (wasIdle && !this.isIdle) {
-          if (this.currentFocusedTab) {
-            this.startTabActivity(this.currentFocusedTab)
-          }
-        }
-
-        this.activeTabs.forEach(tab => {
-          tab.isIdle = this.isIdle
-        })
       }
 
       async handleVisibilityChange(tabId: number, visible: boolean) {
@@ -388,7 +397,7 @@ export default defineBackground(() => {
         const tab = this.activeTabs.get(tabId)
         if (!tab) return
 
-        if (tab.isVisible && !this.isIdle && this.currentFocusedTab === tabId) {
+        if (tab.isVisible && !this.idleTracker.getIdleState() && this.currentFocusedTab === tabId) {
           await DatabaseService.startPageActivity(tab.pageId)
           tab.lastActivityTime = Date.now()
           console.log(`Started activity tracking for tab ${tabId}: ${tab.url}`)
@@ -409,7 +418,7 @@ export default defineBackground(() => {
 
       private async getTabReferrer(tabId: number): Promise<string | undefined> {
         try {
-          const tab = await browser.tabs.get(tabId)
+          const tab = await chrome.tabs.get(tabId)
           return tab.pendingUrl || tab.url
         } catch {
           return undefined
@@ -425,7 +434,7 @@ export default defineBackground(() => {
 
       async initialize() {
         try {
-          const tabs = await browser.tabs.query({})
+          const tabs = await chrome.tabs.query({})
 
           for (const tab of tabs) {
             if (tab.id && tab.url && !tab.url.startsWith('chrome://')) {
@@ -437,16 +446,17 @@ export default defineBackground(() => {
                 url: page.url,
                 domain: page.domain,
                 isVisible: tab.active,
-                isIdle: false,
+                isIdle: this.idleTracker.getIdleState(),
                 lastActivityTime: Date.now()
               })
 
               if (tab.active) {
                 try {
-                  const window = await browser.windows.get(tab.windowId)
+                  const window = await chrome.windows.get(tab.windowId)
                   if (window.focused) {
                     this.currentFocusedTab = tab.id
                     await this.startTabActivity(tab.id)
+                    this.badgeManager.resetTabTime(tab.id)
                   }
                 } catch (error) {
                   console.warn(`Could not get window info for tab ${tab.id}:`, error)
@@ -467,18 +477,30 @@ export default defineBackground(() => {
         }
         this.activeTabs.clear()
         this.currentFocusedTab = undefined
+        this.idleTracker.cleanup()
+      }
+
+      async saveCurrentActivity(tabId: number) {
+        const tab = this.activeTabs.get(tabId);
+        if (!tab) return;
+
+        const savedTime = await this.endTabActivity(tabId);
+        if (savedTime && savedTime > 0) {
+          await this.startTabActivity(tabId);
+        }
       }
     }
 
-    // Main Background Service
     class BackgroundService {
       private tabManager: TabManager;
       private sessionManager: SessionManager;
+      private badgeManager: BadgeManager;
       private isTrackingEnabled = true;
 
       constructor() {
         this.tabManager = new TabManager();
         this.sessionManager = SessionManager.getInstance();
+        this.badgeManager = BadgeManager.getInstance();
         this.init();
       }
 
@@ -493,7 +515,12 @@ export default defineBackground(() => {
           this.setupEventListeners();
           this.setupMessageHandler();
 
-          browser.idle.setDetectionInterval(30);
+          const settings = await chrome.storage.sync.get(['badgeEnabled']);
+          this.badgeManager.setEnabled(settings.badgeEnabled !== false);
+
+          setInterval(() => {
+            this.saveCurrentSessions();
+          }, 30000);
 
           console.log('Background service initialized successfully');
         } catch (error) {
@@ -501,37 +528,49 @@ export default defineBackground(() => {
         }
       }
 
+      private async saveCurrentSessions() {
+        if (!this.isTrackingEnabled) return;
+
+        try {
+          const currentTab = this.tabManager.getCurrentTab();
+          if (currentTab) {
+            await this.tabManager.saveCurrentActivity(currentTab.tabId);
+          }
+        } catch (error) {
+          console.error('Failed to save current sessions:', error);
+        }
+      }
+
       private setupEventListeners() {
-        browser.tabs.onActivated.addListener(this.handleTabActivated.bind(this));
-        browser.tabs.onUpdated.addListener(this.handleTabUpdated.bind(this));
-        browser.tabs.onRemoved.addListener(this.handleTabRemoved.bind(this));
-        browser.windows.onFocusChanged.addListener(this.handleWindowFocusChanged.bind(this));
-        browser.idle.onStateChanged.addListener(this.handleIdleStateChanged.bind(this));
+        chrome.tabs.onActivated.addListener(this.handleTabActivated.bind(this));
+        chrome.tabs.onUpdated.addListener(this.handleTabUpdated.bind(this));
+        chrome.tabs.onRemoved.addListener(this.handleTabRemoved.bind(this));
+        chrome.windows.onFocusChanged.addListener(this.handleWindowFocusChanged.bind(this));
       }
 
       private setupMessageHandler() {
-        browser.runtime.onMessage.addListener((message: BaseMessage, sender, sendResponse) => {
+        chrome.runtime.onMessage.addListener((message: BaseMessage, sender, sendResponse) => {
           this.handleMessage(message, sender)
             .then(response => sendResponse({ success: true, data: response }))
             .catch(error => {
               console.error(`Error handling message ${message.type}:`, error);
               sendResponse({ success: false, error: error.message });
             });
-          return true; // Асинхронный ответ
+          return true;
         });
       }
 
-      private async handleMessage(message: BaseMessage, sender: Browser.runtime.MessageSender) {
+      private async handleMessage(message: BaseMessage, sender: chrome.runtime.MessageSender) {
         if (!this.isTrackingEnabled && !['IS_TRACKING_ENABLED', 'RESUME_TRACKING'].includes(message.type)) {
           return null;
         }
 
         switch (message.type) {
-          case 'GET_TODAY_TIME':
+          case CONST_EVENTS.GET_TODAY_TIME:
             const todayTime = await DatabaseService.getTodayActiveTime();
             return { todayTime };
 
-          case 'GET_STATS':
+          case CONST_EVENTS.GET_STATS:
             const topDomains = await DatabaseService.getTopDomains(10);
             const currentTab = this.tabManager.getCurrentTab();
             return {
@@ -543,20 +582,28 @@ export default defineBackground(() => {
               } : null
             };
 
-          case 'IS_TRACKING_ENABLED':
+          case CONST_EVENTS.IS_TRACKING_ENABLED:
             return { enabled: this.isTrackingEnabled };
 
-          case 'PAUSE_TRACKING':
+          case CONST_EVENTS.PAUSE_TRACKING:
             this.isTrackingEnabled = false;
+            this.badgeManager.disable();
             await this.tabManager.cleanup();
             return { success: true };
 
-          case 'RESUME_TRACKING':
+          case CONST_EVENTS.RESUME_TRACKING:
             this.isTrackingEnabled = true;
+            this.badgeManager.enable();
             await this.tabManager.initialize();
             return { success: true };
 
-          case 'EXPORT_DATA':
+          case CONST_EVENTS.SET_BADGE_ENABLED:
+            const { enabled } = message.data;
+            this.badgeManager.setEnabled(enabled);
+            await chrome.storage.sync.set({ badgeEnabled: enabled });
+            return { success: true };
+
+          case CONST_EVENTS.EXPORT_DATA:
             const data = {
               pages: await db.pages.toArray(),
               events: await db.events.toArray(),
@@ -566,20 +613,20 @@ export default defineBackground(() => {
             };
             return data;
 
-          case 'CLEAR_DATA':
+          case CONST_EVENTS.CLEAR_DATA:
             await DatabaseService.clearAllData();
             await this.sessionManager.initialize();
             await this.tabManager.initialize();
             return { success: true };
 
-          case 'PAGE_VIEW':
+          case CONST_EVENTS.PAGE_VIEW:
             if (sender.tab?.id) {
               const { url, title } = message.data;
               await this.tabManager.handlePageView(sender.tab.id, url, title);
             }
             return null;
 
-          case 'VISIBILITY_CHANGE':
+          case CONST_EVENTS.VISIBILITY_CHANGE:
             if (sender.tab?.id) {
               const { visible } = message.data;
               await this.tabManager.handleVisibilityChange(sender.tab.id, visible);
@@ -592,12 +639,12 @@ export default defineBackground(() => {
         }
       }
 
-      private async handleTabActivated(activeInfo: Browser.tabs.TabActiveInfo) {
+      private async handleTabActivated(activeInfo: { tabId: number }) {
         if (!this.isTrackingEnabled) return;
         await this.tabManager.handleTabFocusGain(activeInfo.tabId);
       }
 
-      private async handleTabUpdated(tabId: number, changeInfo: Browser.tabs.TabChangeInfo, tab: Browser.tabs.Tab) {
+      private async handleTabUpdated(tabId: number, changeInfo: any, tab: any) {
         if (!this.isTrackingEnabled) return;
         if (changeInfo.status === 'complete' && tab.url) {
           await this.tabManager.handlePageView(tabId, tab.url, tab.title || '');
@@ -612,13 +659,8 @@ export default defineBackground(() => {
         if (!this.isTrackingEnabled) return;
         await this.tabManager.handleWindowFocusChanged(windowId);
       }
-
-      private async handleIdleStateChanged(newState: Browser.idle.IdleState) {
-        if (!this.isTrackingEnabled) return;
-        this.tabManager.handleIdleStateChange(newState);
-      }
     }
 
     new BackgroundService();
   });
-});
+})

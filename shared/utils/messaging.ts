@@ -18,10 +18,10 @@ export function sendMessage<T = any>(type: string, data?: any): Promise<T> {
   });
 }
 
-export function createMessageHandler(handlers: Record<string, (message: BaseMessage, sender: Browser.runtime.MessageSender) => Promise<any> | any>) {
+export function createMessageHandler(handlers: Record<string, (message: BaseMessage, sender: chrome.runtime.MessageSender) => Promise<any> | any>) {
   return (
     message: BaseMessage,
-    sender: Browser.runtime.MessageSender,
+    sender: chrome.runtime.MessageSender,
     sendResponse: (response: any) => void
   ) => {
     const handler = handlers[message.type];
@@ -57,7 +57,7 @@ export function createMessageHandler(handlers: Record<string, (message: BaseMess
 }
 
 export function createContentMessageHandler(handlers: Record<string, (message: BaseMessage) => any>) {
-  return (message: BaseMessage, sender: Browser.runtime.MessageSender, sendResponse: (response: any) => void) => {
+  return (message: BaseMessage, sender: chrome.runtime.MessageSender, sendResponse: (response: any) => void) => {
     const handler = handlers[message.type];
 
     if (handler) {

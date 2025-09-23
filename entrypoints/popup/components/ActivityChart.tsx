@@ -1,9 +1,8 @@
-import { Pie } from 'react-chartjs-2';
-import { Chart as ChartJS, ArcElement, Tooltip } from 'chart.js';
+import { Doughnut } from 'react-chartjs-2';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import { formatTime } from '../utils/time';
-import { PIE_COLORS } from '../utils/constants';
 
-ChartJS.register(ArcElement, Tooltip);
+ChartJS.register(ArcElement, Tooltip, Legend);
 
 interface Domain {
   domain: string;
@@ -14,39 +13,76 @@ interface Domain {
 
 interface ActivityChartProps {
   domains: Domain[];
+  totalTime: number;
 }
 
-const ActivityChart = ({ domains }: ActivityChartProps) => {
-  if (!domains || domains.length === 0) return null;
+const CHART_COLORS = [
+  '#FF6B6B', // Red
+  '#4ECDC4', // Teal
+  '#45B7D1', // Blue
+  '#96CEB4', // Green
+  '#FECA57', // Yellow
+  '#FF9FF3', // Pink
+  '#54A0FF', // Light Blue
+  '#5F27CD', // Purple
+];
 
-  const totalTime = domains.reduce((sum, d) => sum + d.totalTime, 0);
-  if (totalTime === 0) return null;
+const ActivityChart = ({ domains, totalTime }: ActivityChartProps) => {
+  if (!domains || domains.length === 0 || totalTime === 0) {
+    return (
+      <div class='chart-container'>
+        <div class='empty-chart'>
+          <div class='chart-placeholder'>
+            <div class='placeholder-circle'>
+              <div class='placeholder-inner'>
+                <div class='time-display'>
+                  <span class='time-value'>0:00:00</span>
+                  <span class='time-label'>No activity</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const topFive = domains.slice(0, 5);
-  const topFiveTime = topFive.reduce((sum, d) => sum + d.totalTime, 0);
-  const otherTime = totalTime - topFiveTime;
+  // Take top 7 domains and group others as "Other"
+  const topDomains = domains.slice(0, 7);
+  const topDomainsTime = topDomains.reduce((sum, d) => sum + d.totalTime, 0);
+  const otherTime = totalTime - topDomainsTime;
 
-  const chartLabels = topFive.map((d) => d.domain);
-  const chartDataValues = topFive.map((d) => d.totalTime);
+  const chartLabels = topDomains.map((d) => d.domain);
+  const chartData = topDomains.map((d) => d.totalTime);
+  const chartColors = CHART_COLORS.slice(0, topDomains.length);
 
-  if (domains.length > 5 && otherTime > 0) {
+  if (domains.length > 7 && otherTime > 0) {
     chartLabels.push('Other');
-    chartDataValues.push(otherTime);
+    chartData.push(otherTime);
+    chartColors.push('#BDC3C7'); // Gray for "Other"
   }
 
   const data = {
     labels: chartLabels,
     datasets: [
       {
-        data: chartDataValues,
-        backgroundColor: PIE_COLORS.slice(0, chartLabels.length),
+        data: chartData,
+        backgroundColor: chartColors,
+        borderColor: '#FFFFFF',
+        borderWidth: 2,
+        hoverBorderWidth: 3,
+        cutout: '75%', // Makes it a doughnut
       },
     ],
   };
 
   const options = {
+    responsive: true,
+    maintainAspectRatio: false,
     plugins: {
-      legend: { display: false },
+      legend: {
+        display: false, // We'll create our own legend
+      },
       tooltip: {
         callbacks: {
           label: function (context: any) {
@@ -55,32 +91,65 @@ const ActivityChart = ({ domains }: ActivityChartProps) => {
             return `${context.label}: ${formatTime(value)} (${percent}%)`;
           },
         },
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        titleColor: '#FFFFFF',
+        bodyColor: '#FFFFFF',
+        cornerRadius: 8,
+        displayColors: true,
       },
+    },
+    elements: {
+      arc: {
+        borderRadius: 4,
+      },
+    },
+    animation: {
+      animateRotate: true,
+      animateScale: false,
+      duration: 1000,
     },
   };
 
-  return (
-    <section class='activity-chart'>
-      <h3>Time Distribution</h3>
-      <div class='chart-container'>
-        <Pie data={data} options={options} />
-      </div>
+  // Custom plugin to draw text in center
+  const centerTextPlugin = {
+    id: 'centerText',
+    afterDraw: (chart: any) => {
+      const {
+        ctx,
+        chartArea: { width, height },
+      } = chart;
+      const centerX = width / 2;
+      const centerY = height / 2;
 
-      <div class='custom-legend'>
-        {chartLabels.map((label, index) => (
-          <div key={label} class='legend-item'>
-            <span
-              class='legend-color'
-              style={{ backgroundColor: PIE_COLORS[index] }}
-            />
-            <span class='legend-label'>{label}</span>
-            <span class='legend-time'>
-              {formatTime(chartDataValues[index])}
-            </span>
-          </div>
-        ))}
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Main time display
+      ctx.fillStyle = '#2C3E50';
+      ctx.font =
+        'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText(formatTime(totalTime), centerX, centerY - 8);
+
+      // Label
+      ctx.fillStyle = '#7F8C8D';
+      ctx.font =
+        '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText('Total Time', centerX, centerY + 14);
+
+      ctx.restore();
+    },
+  };
+
+  // Register the plugin
+  ChartJS.register(centerTextPlugin);
+
+  return (
+    <div class='chart-container'>
+      <div class='doughnut-wrapper'>
+        <Doughnut data={data} options={options} plugins={[centerTextPlugin]} />
       </div>
-    </section>
+    </div>
   );
 };
 
