@@ -36,6 +36,13 @@ const PopupApp = () => {
           sendMessage('IS_TRACKING_ENABLED'),
         ]);
 
+      console.log(
+        `STATS FORM MAIN.TSX:`,
+        todayTimeResponse,
+        statsResponse,
+        trackingResponse
+      );
+
       setStats({
         todayTime: todayTimeResponse.data?.todayTime || 0,
         isTrackingEnabled: trackingResponse.data?.enabled || false,
@@ -187,11 +194,9 @@ const PopupApp = () => {
         </nav>
       </header>
 
-      {/* Main content */}
       <main class='popup-main'>
         {activeTab === 'home' && (
           <>
-            {/* Date navigation */}
             <div class='date-navigation'>
               <button class='date-nav-btn' onClick={() => changeDate('prev')}>
                 <ChevronLeft size={16} />

@@ -1,4 +1,4 @@
-import { CONST_EVENTS } from "../lib/constants";
+import { CONST_EVENTS } from "../shared/constants/constants";
 
 export default defineContentScript({
   matches: ['https://*/*', 'http://*/*'],

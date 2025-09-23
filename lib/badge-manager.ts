@@ -6,6 +6,9 @@ export class BadgeManager {
   private isEnabled = true;
   private currentTabId?: number;
   private tabStartTimes = new Map<number, number>();
+  private currentTabTotalTime = 0;
+  private currentSessionTime = 0;
+  private currentTabUrl?: string;
 
   static getInstance(): BadgeManager {
     if (!BadgeManager.instance) {
@@ -21,7 +24,7 @@ export class BadgeManager {
   private init() {
     this.updateInterval = setInterval(() => {
       this.updateBadge();
-    }, 5000);
+    }, 1000);
 
     chrome.tabs.onActivated.addListener((activeInfo) => {
       this.handleTabChange(activeInfo.tabId);
@@ -40,6 +43,8 @@ export class BadgeManager {
     if (this.currentTabId !== tabId) {
       this.currentTabId = tabId;
       this.tabStartTimes.set(tabId, now);
+      this.currentSessionTime = 0;
+      this.currentTabTotalTime = 0;
       this.updateBadge();
     }
   }
@@ -58,14 +63,16 @@ export class BadgeManager {
       }
 
       const currentTime = Date.now();
-      const timeSpent = currentTime - startTime;
+      this.currentSessionTime = currentTime - startTime;
 
-      if (timeSpent < 10000) {
+      if (this.currentSessionTime < 5000) {
         await this.clearBadge();
         return;
       }
 
-      const badgeText = formatBadgeTime(timeSpent);
+      const totalTimeOnPage = this.currentTabTotalTime + this.currentSessionTime;
+
+      const badgeText = formatBadgeTime(totalTimeOnPage);
 
       await chrome.action.setBadgeText({
         text: badgeText,
@@ -73,20 +80,20 @@ export class BadgeManager {
       });
 
       await chrome.action.setBadgeBackgroundColor({
-        color: '#dfdfdf'
+        color: '#4CAF50'
       });
 
       const tab = await chrome.tabs.get(this.currentTabId);
       if (tab) {
         const domain = this.extractDomain(tab.url || '');
-        const formattedTime = formatFullTime(timeSpent);
+        const formattedTotal = formatFullTime(totalTimeOnPage);
+        const formattedSession = formatFullTime(this.currentSessionTime);
 
         await chrome.action.setTitle({
-          title: `Activity Analytics\n${domain}: ${formattedTime}`,
+          title: `Activity Analytics\n${domain}\nTotal: ${formattedTotal}\nThis session: ${formattedSession}`,
           tabId: this.currentTabId
         });
       }
-
     } catch (error) {
       console.error('Failed to update badge:', error);
     }
@@ -130,9 +137,24 @@ export class BadgeManager {
 
   public resetTabTime(tabId: number) {
     this.tabStartTimes.set(tabId, Date.now());
+    this.currentSessionTime = 0;
+
     if (tabId === this.currentTabId) {
       this.updateBadge();
     }
+  }
+
+  public setCurrentTabData(tabId: number, totalTime: number, url: string) {
+    if (tabId === this.currentTabId) {
+      this.currentTabTotalTime = totalTime;
+      this.currentTabUrl = url;
+      this.updateBadge();
+    }
+  }
+
+  public updateCurrentTabTotalTime(totalTime: number) {
+    this.currentTabTotalTime = totalTime;
+    this.updateBadge();
   }
 
   public cleanup() {

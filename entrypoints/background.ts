@@ -1,7 +1,7 @@
 import { Dexie } from 'dexie';
 import { BadgeManager } from '../lib/badge-manager';
 import { IdleTracker } from '../lib/idle-tracker'
-import { CONST_EVENTS } from '../lib/constants';
+import { CONST_EVENTS } from '../shared/constants/constants';
 
 export default defineBackground(() => {
   console.log('Background script starting...');
@@ -246,6 +246,13 @@ export default defineBackground(() => {
           .slice(0, limit);
       }
 
+      static async getTabTotalTime(pageUrl: string) {
+        const page = await db.pages.where('url').equals(pageUrl).first();
+
+        return page.totalActiveTime
+      }
+
+
       static async clearAllData() {
         await db.transaction('rw', [db.pages, db.events, db.sessions], async () => {
           await db.pages.clear();
@@ -315,6 +322,9 @@ export default defineBackground(() => {
 
         this.badgeManager.resetTabTime(tabId)
 
+        const totalTime = await DatabaseService.getTabTotalTime(page.url) || 0;
+        this.badgeManager.setCurrentTabData(tabId, totalTime, page.url);
+
         if (this.currentFocusedTab === tabId && !this.idleTracker.getIdleState()) {
           await this.startTabActivity(tabId)
         }
@@ -340,11 +350,28 @@ export default defineBackground(() => {
 
           this.badgeManager.resetTabTime(tabId)
 
+          const totalTime = await DatabaseService.getTabTotalTime(tab.url) || 0;
+          this.badgeManager.setCurrentTabData(tabId, totalTime, tab.url);
+
           if (!this.idleTracker.getIdleState()) {
             await this.startTabActivity(tabId)
           }
         }
       }
+
+      async saveCurrentActivity(tabId: number) {
+        const tab = this.activeTabs.get(tabId);
+        if (!tab) return;
+
+        const savedTime = await this.endTabActivity(tabId);
+        if (savedTime && savedTime > 0) {
+          const newTotalTime = await DatabaseService.getTabTotalTime(tab.url) || 0;
+          this.badgeManager.updateCurrentTabTotalTime(newTotalTime);
+
+          await this.startTabActivity(tabId);
+        }
+      }
+
 
       async handleTabClose(tabId: number) {
         const tab = this.activeTabs.get(tabId)
@@ -479,16 +506,6 @@ export default defineBackground(() => {
         this.currentFocusedTab = undefined
         this.idleTracker.cleanup()
       }
-
-      async saveCurrentActivity(tabId: number) {
-        const tab = this.activeTabs.get(tabId);
-        if (!tab) return;
-
-        const savedTime = await this.endTabActivity(tabId);
-        if (savedTime && savedTime > 0) {
-          await this.startTabActivity(tabId);
-        }
-      }
     }
 
     class BackgroundService {
@@ -560,6 +577,7 @@ export default defineBackground(() => {
         });
       }
 
+
       private async handleMessage(message: BaseMessage, sender: chrome.runtime.MessageSender) {
         if (!this.isTrackingEnabled && !['IS_TRACKING_ENABLED', 'RESUME_TRACKING'].includes(message.type)) {
           return null;
@@ -573,13 +591,17 @@ export default defineBackground(() => {
           case CONST_EVENTS.GET_STATS:
             const topDomains = await DatabaseService.getTopDomains(10);
             const currentTab = this.tabManager.getCurrentTab();
+
+            // console.log(`DDDDDDDDDDDDDDD`, await DatabaseService.getTabTotalTime(currentTab.url))
+
             return {
               topDomains,
               currentTab: currentTab ? {
                 url: currentTab.url,
                 domain: currentTab.domain,
-                activeTime: 0 // TODO: calculate current active time
+                activeTime: await DatabaseService.getTabTotalTime(currentTab.url)
               } : null
+
             };
 
           case CONST_EVENTS.IS_TRACKING_ENABLED:
