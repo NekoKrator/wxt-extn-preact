@@ -152,15 +152,17 @@ const PopupApp = () => {
   const totalTime = stats.topDomains.reduce((sum, d) => sum + d.totalTime, 0);
 
   return (
-    <div class='popup-container'>
-      <header class='popup-header'>
-        <div class='header-title'>
-          <span class='logo'>⏱️</span>
-          <h1>Webtime Tracker</h1>
-          <p class='subtitle'>Discover your browsing habits!</p>
+    <div className='flex flex-col h-screen max-h-[600px]'>
+      <header className='bg-[var(--background)] [border-bottom:1px_solid_var(--border)] p-0'>
+        <div className='pt-[16px] px-[20px] pb-[12px] text-center [border-bottom:1px_solid_var(--border-light)]'>
+          <span className='text-[24px] mb-[4px] block'>TEST</span>
+          <h1 className='text-[18px] font-semibold ml-[0] mr-[0] my-[0]'>
+            Activity Tracker
+          </h1>
+          {/* <p className='text-[13px] m-0'>Discover your browsing habits!</p> */}
         </div>
 
-        <nav class='tab-nav'>
+        <nav className='flex bg-[var(--surface)]'>
           <button
             class={`tab-btn ${activeTab === 'home' ? 'active' : ''}`}
             onClick={() => setActiveTab('home')}

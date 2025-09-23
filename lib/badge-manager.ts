@@ -1,3 +1,5 @@
+import { formatBadgeTime, formatFullTime } from "../entrypoints/popup/utils/time";
+
 export class BadgeManager {
   private static instance: BadgeManager;
   private updateInterval?: number;
@@ -63,7 +65,7 @@ export class BadgeManager {
         return;
       }
 
-      const badgeText = this.formatBadgeTime(timeSpent);
+      const badgeText = formatBadgeTime(timeSpent);
 
       await chrome.action.setBadgeText({
         text: badgeText,
@@ -77,7 +79,7 @@ export class BadgeManager {
       const tab = await chrome.tabs.get(this.currentTabId);
       if (tab) {
         const domain = this.extractDomain(tab.url || '');
-        const formattedTime = this.formatFullTime(timeSpent);
+        const formattedTime = formatFullTime(timeSpent);
 
         await chrome.action.setTitle({
           title: `Activity Analytics\n${domain}: ${formattedTime}`,
@@ -88,40 +90,6 @@ export class BadgeManager {
     } catch (error) {
       console.error('Failed to update badge:', error);
     }
-  }
-
-  private formatBadgeTime(ms: number): string {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-
-    if (hours > 0) {
-      return `${hours}h`;
-    } else if (minutes > 0) {
-      return `${minutes}m`;
-    } else {
-      return `${seconds}s`;
-    }
-  }
-
-  private formatFullTime(ms: number): string {
-    const seconds = Math.floor((ms / 1000) % 60);
-    const minutes = Math.floor((ms / (1000 * 60)) % 60);
-    const hours = Math.floor(ms / (1000 * 60 * 60));
-
-    const parts: string[] = [];
-
-    if (hours > 0) {
-      parts.push(`${hours}h`);
-    }
-    if (minutes > 0) {
-      parts.push(`${minutes}m`);
-    }
-    if (seconds > 0 || parts.length === 0) {
-      parts.push(`${seconds}s`);
-    }
-
-    return parts.join(' ');
   }
 
   private extractDomain(url: string): string {

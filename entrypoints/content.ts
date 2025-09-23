@@ -66,7 +66,6 @@ export default defineContentScript({
             timestamp: Date.now()
           };
 
-          // В WXT 0.20+ используем browser.runtime вместо chrome.runtime
           const response = await browser.runtime.sendMessage(message);
           return response;
         } catch (error) {
@@ -109,7 +108,6 @@ export default defineContentScript({
           this.sendVisibilityChange(true, event.persisted ? 'page_show_cached' : 'page_show')
         })
       }
-
       private sendVisibilityChange(visible: boolean, reason: string) {
         this.sendMessage(CONST_EVENTS.VISIBILITY_CHANGE, {
           visible,
@@ -179,11 +177,9 @@ export default defineContentScript({
           }
         }
 
-        // Отслеживание навигации
         window.addEventListener('popstate', checkUrlChange);
         window.addEventListener('hashchange', checkUrlChange);
 
-        // Перехват History API с правильными типами
         const originalPushState = history.pushState;
         const originalReplaceState = history.replaceState;
 
@@ -197,10 +193,66 @@ export default defineContentScript({
           setTimeout(checkUrlChange, 0);
         }
 
-        // Дополнительные события для SPA фреймворков
         const spaEvents = ['routechange', 'navigationend', 'urlchange'] as const;
         spaEvents.forEach((eventName: string) => {
           window.addEventListener(eventName, checkUrlChange, { passive: true })
+        })
+
+        // L2
+        function debounce(func, delay) {
+          let timeout;
+
+          return (...args) => {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func(...args), delay);
+          };
+        }
+
+        function throttle(func, delay) {
+          let last = 0;
+
+          return (...args) => {
+            const now = Date.now();
+
+            if (now - last >= delay) {
+              func(...args);
+              last = now;
+            }
+          };
+        }
+
+        document.addEventListener('scroll', debounce(() => {
+          const doc = document.documentElement
+          const percent = Math.round(
+            (doc.scrollTop / (doc.scrollHeight - doc.clientHeight)) * 100
+          )
+
+          this.sendMessage('scroll_depth', {
+            type: 'scroll_depth',
+            value: percent
+          }).catch(error => {
+            console.warn('Failed to send scroll_depth', error)
+          })
+        }, 300))
+
+        document.addEventListener('click', throttle((event) => {
+          this.sendMessage('click', {
+            type: 'click',
+            tag: event.target.tagName,
+            id: event.target.id,
+            classes: event.target.className,
+            x: event.clientX,
+            y: event.clientY
+          })
+        }, 300))
+
+
+        document.addEventListener('keydown', () => {
+          this.sendMessage('keydown', {
+            type: 'keydown'
+          }).catch(error => {
+            console.warn('Failed to send keydown:', error)
+          })
         })
       }
 

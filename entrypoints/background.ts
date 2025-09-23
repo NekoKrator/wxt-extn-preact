@@ -631,7 +631,20 @@ export default defineBackground(() => {
               const { visible } = message.data;
               await this.tabManager.handleVisibilityChange(sender.tab.id, visible);
             }
-            return null;
+            return null
+
+          // L2
+          case 'scroll_depth':
+            console.log(message.data)
+            return null
+
+          case 'click':
+            console.log({ ...message })
+            return null
+
+          case 'keydown':
+            console.log('pressed')
+            return null
 
           default:
             console.error(`Unknown message type: ${message.type}`);
