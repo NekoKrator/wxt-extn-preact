@@ -47,7 +47,6 @@ const ActivityChart = ({ domains, totalTime }: ActivityChartProps) => {
     );
   }
 
-  // Take top 7 domains and group others as "Other"
   const topDomains = domains.slice(0, 7);
   const topDomainsTime = topDomains.reduce((sum, d) => sum + d.totalTime, 0);
   const otherTime = totalTime - topDomainsTime;
@@ -59,7 +58,7 @@ const ActivityChart = ({ domains, totalTime }: ActivityChartProps) => {
   if (domains.length > 7 && otherTime > 0) {
     chartLabels.push('Other');
     chartData.push(otherTime);
-    chartColors.push('#BDC3C7'); // Gray for "Other"
+    chartColors.push('#BDC3C7');
   }
 
   const data = {
@@ -71,7 +70,7 @@ const ActivityChart = ({ domains, totalTime }: ActivityChartProps) => {
         borderColor: '#FFFFFF',
         borderWidth: 2,
         hoverBorderWidth: 3,
-        cutout: '75%', // Makes it a doughnut
+        cutout: '75%',
       },
     ],
   };
@@ -81,7 +80,7 @@ const ActivityChart = ({ domains, totalTime }: ActivityChartProps) => {
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        display: false, // We'll create our own legend
+        display: false,
       },
       tooltip: {
         callbacks: {
@@ -91,7 +90,6 @@ const ActivityChart = ({ domains, totalTime }: ActivityChartProps) => {
             return `${context.label}: ${formatTime(value)} (${percent}%)`;
           },
         },
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
         titleColor: '#FFFFFF',
         bodyColor: '#FFFFFF',
         cornerRadius: 8,
@@ -110,7 +108,6 @@ const ActivityChart = ({ domains, totalTime }: ActivityChartProps) => {
     },
   };
 
-  // Custom plugin to draw text in center
   const centerTextPlugin = {
     id: 'centerText',
     afterDraw: (chart: any) => {
@@ -125,13 +122,11 @@ const ActivityChart = ({ domains, totalTime }: ActivityChartProps) => {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
-      // Main time display
       ctx.fillStyle = '#2C3E50';
       ctx.font =
         'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
       ctx.fillText(formatTime(totalTime), centerX, centerY - 8);
 
-      // Label
       ctx.fillStyle = '#7F8C8D';
       ctx.font =
         '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -141,7 +136,6 @@ const ActivityChart = ({ domains, totalTime }: ActivityChartProps) => {
     },
   };
 
-  // Register the plugin
   ChartJS.register(centerTextPlugin);
 
   return (

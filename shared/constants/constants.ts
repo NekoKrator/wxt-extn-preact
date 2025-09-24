@@ -12,6 +12,11 @@ export const CONST_EVENTS = {
   EXPORT_DATA: 'EXPORT_DATA',
   CLEAR_DATA: 'CLEAR_DATA',
   VISIBILITY_CHANGE: 'VISIBILITY_CHANGE',
+  SCROLL_DEPTH: 'scroll_depth',
+  CLICK: 'click',
+  KEYDOWN: 'keydown',
+  FORM_INTERACTION: 'form_interaction',
+  SPA_ROUTE_CHANGE: 'spa_route_change',
 
   visibilitychange: 'visibilitychange',
   beforeunload: 'beforeunload',
@@ -22,3 +27,14 @@ export const CONST_EVENTS = {
 
   COMPLETE: 'complete',
 } as const
+
+export const indicatorColors = [
+  '#ff6b6b',
+  '#4ecdc4',
+  '#45b7d1',
+  '#96ceb4',
+  '#feca57',
+  '#ff9ff3',
+  '#54a0ff',
+  '#5f27cd',
+] as const

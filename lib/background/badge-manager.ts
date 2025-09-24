@@ -1,4 +1,4 @@
-import { formatBadgeTime, formatFullTime } from "../entrypoints/popup/utils/time";
+import { formatBadgeTime, formatFullTime } from "../../entrypoints/popup/utils/time";
 
 export class BadgeManager {
   private static instance: BadgeManager;

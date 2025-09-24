@@ -17,7 +17,6 @@ const StatsTab = ({ stats, onExport, onClear }: StatsTabProps) => {
 
   return (
     <div class='stats-tab'>
-      {/* Overview stats */}
       <div class='overview-stats'>
         <div class='stat-card'>
           <div class='stat-value'>{formatTime(stats.todayTime)}</div>
@@ -35,9 +34,21 @@ const StatsTab = ({ stats, onExport, onClear }: StatsTabProps) => {
           <div class='stat-value'>{totalPages}</div>
           <div class='stat-label'>Pages Visited</div>
         </div>
+
+        <div class='stat-card'>
+          <div class='stat-value'>{totalPages}</div>
+          <div class='stat-label'>Depth Scroll</div>
+        </div>
+        <div class='stat-card'>
+          <div class='stat-value'>{totalPages}</div>
+          <div class='stat-label'>Last click</div>
+        </div>
+        <div class='stat-card'>
+          <div class='stat-value'>{totalPages}</div>
+          <div class='stat-label'>Number of Keydown</div>
+        </div>
       </div>
 
-      {/* Detailed domain stats */}
       <div class='detailed-stats'>
         <h3>Detailed Statistics</h3>
 

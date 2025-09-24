@@ -8,12 +8,12 @@ import {
   BarChart3,
   Home,
 } from 'lucide-react';
-import { formatTime } from './utils/time';
 import './style.css';
 import ActivityChart from './components/ActivityChart';
 import StatsTab from './components/StatsTab';
 import SettingsTab from './components/SettingsTab';
 import type { Stats } from './utils/types';
+import WebsiteList from './components/WebsiteList';
 
 type TabType = 'home' | 'stats' | 'settings';
 
@@ -29,18 +29,35 @@ const PopupApp = () => {
       setLoading(true);
       setError(null);
 
-      const [todayTimeResponse, statsResponse, trackingResponse] =
-        await Promise.all([
-          sendMessage('GET_TODAY_TIME'),
-          sendMessage('GET_STATS'),
-          sendMessage('IS_TRACKING_ENABLED'),
-        ]);
+      const [activeTab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      const url = activeTab?.url;
+
+      console.log(`DDDDDDDDDDDDDDDDDDDDDDDDDDDDD: ${url}`);
+
+      const [
+        todayTimeResponse,
+        statsResponse,
+        trackingResponse,
+        groupResponse,
+        metricsResponse,
+      ] = await Promise.all([
+        sendMessage('GET_TODAY_TIME'),
+        sendMessage('GET_STATS'),
+        sendMessage('IS_TRACKING_ENABLED'),
+        sendMessage('GET_ALL_TABS'),
+        sendMessage('GET_METRICS', { url: url }),
+      ]);
 
       console.log(
         `STATS FORM MAIN.TSX:`,
         todayTimeResponse,
         statsResponse,
-        trackingResponse
+        trackingResponse,
+        groupResponse.data.allTabs,
+        metricsResponse
       );
 
       setStats({
@@ -48,6 +65,7 @@ const PopupApp = () => {
         isTrackingEnabled: trackingResponse.data?.enabled || false,
         topDomains: statsResponse.data?.topDomains || [],
         currentTab: statsResponse.data?.currentTab,
+        groupedTabs: groupResponse.data?.allTabs || [],
       });
     } catch (error) {
       console.error('Failed to load stats:', error);
@@ -159,7 +177,7 @@ const PopupApp = () => {
   const totalTime = stats.topDomains.reduce((sum, d) => sum + d.totalTime, 0);
 
   return (
-    <div className='flex flex-col h-screen max-h-[600px]'>
+    <div className='flex flex-col h-screen'>
       <header className='bg-[var(--background)] [border-bottom:1px_solid_var(--border)] p-0'>
         <div className='pt-[16px] px-[20px] pb-[12px] text-center [border-bottom:1px_solid_var(--border-light)]'>
           <span className='text-[24px] mb-[4px] block'>TEST</span>
@@ -219,46 +237,15 @@ const PopupApp = () => {
               </button>
             </div>
 
-            {/* Chart section */}
             <div class='chart-section'>
               <ActivityChart domains={stats.topDomains} totalTime={totalTime} />
             </div>
 
-            {/* Website list */}
-            <div class='website-list'>
-              <h3>Today data</h3>
-
-              {stats.topDomains.length === 0 ? (
-                <div class='empty-state'>
-                  <p>No browsing data for today</p>
-                  <small>Start browsing to see your activity</small>
-                </div>
-              ) : (
-                <div class='domain-items'>
-                  {stats.topDomains.slice(0, 8).map((domain, index) => {
-                    const percentage =
-                      totalTime > 0
-                        ? ((domain.totalTime / totalTime) * 100).toFixed(1)
-                        : '0.0';
-
-                    return (
-                      <div key={`${domain.domain}-${index}`} class='domain-row'>
-                        <div class='domain-info'>
-                          <div class='domain-indicator'></div>
-                          <span class='domain-name'>{domain.domain}</span>
-                        </div>
-                        <div class='domain-stats'>
-                          <span class='domain-percentage'>{percentage} %</span>
-                          <span class='domain-time'>
-                            {formatTime(domain.totalTime)}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            <WebsiteList
+              domains={stats.topDomains}
+              groupedTabs={stats.groupedTabs}
+              totalTime={totalTime}
+            />
 
             {/* Footer actions */}
             <div class='footer-actions'>

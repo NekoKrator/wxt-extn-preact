@@ -1,7 +1,8 @@
 import { Dexie } from 'dexie';
-import { BadgeManager } from '../lib/badge-manager';
-import { IdleTracker } from '../lib/idle-tracker'
+import { BadgeManager } from '../lib/background/badge-manager';
+import { IdleTracker } from '../lib/background/idle-tracker'
 import { CONST_EVENTS } from '../shared/constants/constants';
+import { timeStamp } from 'console';
 
 export default defineBackground(() => {
   console.log('Background script starting...');
@@ -220,6 +221,21 @@ export default defineBackground(() => {
         }, 0);
       }
 
+      static async getAllTabs() {
+        const tabs = await db.pages.toArray()
+
+        const groupedByDomain = tabs.reduce((acc, cur) => {
+          const domain = cur.domain
+          if (!acc[domain]) {
+            acc[domain] = []
+          }
+          acc[domain].push(cur)
+          return acc
+        }, {})
+
+        return groupedByDomain
+      }
+
       static async getTopDomains(limit = 10) {
         const pages = await db.pages.toArray();
         const domainMap = new Map();
@@ -246,12 +262,43 @@ export default defineBackground(() => {
           .slice(0, limit);
       }
 
+      static async getLastScrollDepth(pageId: number) {
+        const ev = await db.events
+          .where('type').equals(CONST_EVENTS.SCROLL_DEPTH)
+          .and(e => e.pageId === pageId)
+          .last()
+
+        return ev?.data?.value ?? 0;
+      }
+
+      static async countKeydowns(pageId: number) {
+        return db.events
+          .where('type').equals(CONST_EVENTS.KEYDOWN)
+          .and(e => e.pageId === pageId)
+          .count();
+      }
+
+      static async getLastClick(pageId: number) {
+        const ev = await db.events
+          .where('type').equals(CONST_EVENTS.CLICK)
+          .and(e => e.pageId === pageId)
+          .last()
+
+        return ev?.data ?? null;
+      }
+
+      static async getPageIdFromUrl(pageUrl: string) {
+        const cleanUrl = pageUrl.split(/[?#]/)[0];
+        const page = await db.pages.where('url').equals(cleanUrl).first();
+        return page?.id ?? null;
+      }
+
+
       static async getTabTotalTime(pageUrl: string) {
         const page = await db.pages.where('url').equals(pageUrl).first();
 
         return page.totalActiveTime
       }
-
 
       static async clearAllData() {
         await db.transaction('rw', [db.pages, db.events, db.sessions], async () => {
@@ -275,6 +322,10 @@ export default defineBackground(() => {
         this.idleTracker = new IdleTracker(15)
 
         this.idleTracker.onIdleChange(this.handleIdleChange.bind(this))
+      }
+
+      getByTabId(tabId: number): ActiveTab | undefined {
+        return this.activeTabs.get(tabId)
       }
 
       private handleIdleChange(isIdle: boolean) {
@@ -372,7 +423,6 @@ export default defineBackground(() => {
         }
       }
 
-
       async handleTabClose(tabId: number) {
         const tab = this.activeTabs.get(tabId)
         if (tab) {
@@ -452,11 +502,26 @@ export default defineBackground(() => {
         }
       }
 
-      getCurrentTab() {
-        if (this.currentFocusedTab === undefined) {
-          return undefined
+      getCurrentTab(): ActiveTab | null {
+        const focusedId = this.currentFocusedTab
+
+        console.debug('[TabManager] getCurrentTab:', {
+          focusedId,
+          existingKeys: Array.from(this.activeTabs.keys())
+        })
+
+        if (focusedId == null) {
+          console.warn('[TabManager] Нет сфокусированной вкладки')
+          return null
         }
-        return this.activeTabs.get(this.currentFocusedTab)
+
+        const tab = this.activeTabs.get(focusedId)
+        if (!tab) {
+          console.error(`[TabManager] activeTabs не содержит запись для tabId=${focusedId}`)
+          return null
+        }
+
+        return tab
       }
 
       async initialize() {
@@ -583,26 +648,92 @@ export default defineBackground(() => {
           return null;
         }
 
+        const trackableEvents = [
+          CONST_EVENTS.SCROLL_DEPTH,
+          CONST_EVENTS.CLICK,
+          CONST_EVENTS.KEYDOWN,
+          CONST_EVENTS.FORM_INTERACTION,
+          CONST_EVENTS.SPA_ROUTE_CHANGE
+        ];
+
+        if (trackableEvents.includes(message.type) && sender.tab?.id) {
+          const tab = this.tabManager.getCurrentTab();
+          if (tab) {
+            console.log(`SAVING EVENT: ${message.type}`);
+            await DatabaseService.addEvent(
+              tab.pageId,
+              this.sessionManager.getCurrentSessionId(),
+              message.type,
+              message.data
+            );
+          }
+          return null;
+        }
+
         switch (message.type) {
           case CONST_EVENTS.GET_TODAY_TIME:
             const todayTime = await DatabaseService.getTodayActiveTime();
             return { todayTime };
 
-          case CONST_EVENTS.GET_STATS:
+          case 'GET_ALL_TABS':
+            const allTabs = await DatabaseService.getAllTabs()
+            return { allTabs }
+
+          case 'GET_METRICS': {
+            let url = message.data?.url;
+
+            if (!url) {
+              return { url: null, scroll: 0, click: null, keydown: 0 };
+            }
+
+            let pageId = await DatabaseService.getPageIdFromUrl(url);
+
+            console.log(pageId)
+
+            if (!pageId) {
+              return { url, scroll: 0, click: null, keydown: 0 };
+            }
+
+            const [scroll, click, keydown] = await Promise.all([
+              DatabaseService.getLastScrollDepth(pageId),
+              DatabaseService.getLastClick(pageId),
+              DatabaseService.countKeydowns(pageId),
+            ]);
+
+            return { url, pageId, scroll, click, keydown };
+          }
+
+
+          case CONST_EVENTS.GET_STATS: {
             const topDomains = await DatabaseService.getTopDomains(10);
             const currentTab = this.tabManager.getCurrentTab();
 
-            // console.log(`DDDDDDDDDDDDDDD`, await DatabaseService.getTabTotalTime(currentTab.url))
+            let lastScroll = 0;
+            let keydownCount = 0;
+            let lastClick: any = null;
+
+            if (currentTab) {
+              const pageId = currentTab.pageId;
+              lastScroll = await DatabaseService.getLastScrollDepth(pageId);
+              keydownCount = await DatabaseService.countKeydowns(pageId);
+              lastClick = await DatabaseService.getLastClick(pageId);
+            }
 
             return {
               topDomains,
-              currentTab: currentTab ? {
-                url: currentTab.url,
-                domain: currentTab.domain,
-                activeTime: await DatabaseService.getTabTotalTime(currentTab.url)
-              } : null
-
+              currentTab: currentTab
+                ? {
+                  url: currentTab.url,
+                  domain: currentTab.domain,
+                  activeTime: await DatabaseService.getTabTotalTime(currentTab.url),
+                  lastScroll,
+                  keydownCount,
+                  lastClick
+                }
+                : null
             };
+          }
+
 
           case CONST_EVENTS.IS_TRACKING_ENABLED:
             return { enabled: this.isTrackingEnabled };
@@ -656,17 +787,38 @@ export default defineBackground(() => {
             return null
 
           // L2
-          case 'scroll_depth':
-            console.log(message.data)
-            return null
+          // case CONST_EVENTS.SCROLL_DEPTH:
+          //   if (sender.tab?.id) {
+          //     const tab = this.tabManager.getCurrentTab()
+          //     if (tab) {
+          //       console.log(`SAVING SCROLL DEPTH`)
+          //       await DatabaseService.addEvent(
+          //         tab.pageId,
+          //         this.sessionManager.getCurrentSessionId(),
+          //         message.type,
+          //         message.data
+          //       )
 
-          case 'click':
-            console.log({ ...message })
-            return null
-
-          case 'keydown':
-            console.log('pressed')
-            return null
+          //     }
+          //   }
+          //   console.log(`NO!!!!!!!!!!!!!! NO SAVING SCROLL DEPTH`)
+          //   return null
+          // case CONST_EVENTS.CLICK:
+          // case CONST_EVENTS.KEYDOWN:
+          // case CONST_EVENTS.FORM_INTERACTION:
+          // case CONST_EVENTS.SPA_ROUTE_CHANGE:
+          //   if (sender.tab?.id) {
+          //     const tab = this.tabManager.getCurrentTab();
+          //     if (tab) {
+          //       await DatabaseService.addEvent(
+          //         tab.pageId,
+          //         this.sessionManager.getCurrentSessionId(),
+          //         message.type,
+          //         message.data
+          //       );
+          //     }
+          //   }
+          //   return null;
 
           default:
             console.error(`Unknown message type: ${message.type}`);

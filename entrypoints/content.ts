@@ -42,10 +42,11 @@ export default defineContentScript({
       }
 
       private setupTracking() {
-        this.sendPageView();
-        this.setupEventListeners();
-        this.setupIntersectionObserver();
-        this.setupSPATracking();
+        this.sendPageView()
+        this.setupEventListeners()
+        this.setupFormTracking()
+        this.setupIntersectionObserver()
+        this.setupSPATracking()
       }
 
       private sendPageView() {
@@ -66,7 +67,7 @@ export default defineContentScript({
             timestamp: Date.now()
           };
 
-          const response = await browser.runtime.sendMessage(message);
+          const response = await chrome.runtime.sendMessage(message);
           return response;
         } catch (error) {
           throw new Error(`Failed to send message: ${error}`);
@@ -108,6 +109,24 @@ export default defineContentScript({
           this.sendVisibilityChange(true, event.persisted ? 'page_show_cached' : 'page_show')
         })
       }
+
+      private setupFormTracking() {
+        const emit = (type: string, tag: string) =>
+          this.sendMessage(CONST_EVENTS.FORM_INTERACTION, { interactionType: type, tag });
+
+        document.querySelectorAll('input, textarea, select').forEach(el => {
+          el.addEventListener('focus', () => emit('focus', el.tagName), true);
+          el.addEventListener('blur', () => emit('blur', el.tagName), true);
+        });
+
+        document.addEventListener('submit', (e: Event) => {
+          const tag = (e.target as HTMLElement).tagName;
+          this.sendMessage(CONST_EVENTS.FORM_INTERACTION, { interactionType: 'submit', tag })
+            .catch(() => {/* silent */ });
+        }, true);
+      }
+
+
       private sendVisibilityChange(visible: boolean, reason: string) {
         this.sendMessage(CONST_EVENTS.VISIBILITY_CHANGE, {
           visible,
@@ -160,7 +179,7 @@ export default defineContentScript({
 
             console.log(`SPA navigation detected: ${from} -> ${newUrl}`)
 
-            this.sendMessage('INTERACTION', {
+            this.sendMessage(CONST_EVENTS.SPA_ROUTE_CHANGE, {
               interactionType: 'spa_navigation',
               url: currentUrl,
               details: {
@@ -228,16 +247,14 @@ export default defineContentScript({
           )
 
           this.sendMessage('scroll_depth', {
-            type: 'scroll_depth',
             value: percent
           }).catch(error => {
             console.warn('Failed to send scroll_depth', error)
           })
         }, 300))
 
-        document.addEventListener('click', throttle((event) => {
+        document.addEventListener('click', throttle((event: any) => {
           this.sendMessage('click', {
-            type: 'click',
             tag: event.target.tagName,
             id: event.target.id,
             classes: event.target.className,
@@ -248,9 +265,7 @@ export default defineContentScript({
 
 
         document.addEventListener('keydown', () => {
-          this.sendMessage('keydown', {
-            type: 'keydown'
-          }).catch(error => {
+          this.sendMessage('keydown').catch(error => {
             console.warn('Failed to send keydown:', error)
           })
         })
